@@ -3,6 +3,20 @@ import json
 import sys
 from client import AgenticColdOutreachDeliverabilityGuard
 
+from typing import Any, Dict, List, Optional
+
+try:
+    from mcp.server.fastmcp import FastMCP
+except ImportError as exc:
+    raise SystemExit("MCP requires the mcp package. Run: python -m pip install -r requirements.txt") from exc
+
+mcp = FastMCP('genpark-agentic-cold-email-outreach-spam-score-guard-skill')
+
+@mcp.tool()
+def evaluate_email_deliverability(subject: str = "", body: str = "", sender_domain: str = "acme.io") -> str:
+    """Score the supplied email content for deliverability risks."""
+    return json.dumps(AgenticColdOutreachDeliverabilityGuard().evaluate_email_deliverability(subject, body, sender_domain))
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--test":
         guard = AgenticColdOutreachDeliverabilityGuard()
@@ -14,28 +28,7 @@ def main():
         print(f"[TEST PASS] Deliverability Score: {res['composite_spam_score']}/10")
         sys.exit(0)
 
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        try:
-            req = json.loads(line)
-            method = req.get("method")
-            msg_id = req.get("id")
-            if method == "initialize":
-                print(json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {"serverInfo": {"name": "genpark-cold-email-guard", "version": "1.0.0"}}}))
-            elif method == "tools/list":
-                print(json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {"tools": [{"name": "evaluate_email_deliverability", "description": "Evaluate cold outreach email for spam score and inbox placement"}]}}))
-            elif method == "tools/call":
-                args = req.get("params", {}).get("arguments", {})
-                guard = AgenticColdOutreachDeliverabilityGuard()
-                out = guard.evaluate_email_deliverability(args.get("subject", ""), args.get("body", ""), args.get("sender_domain", "acme.io"))
-                print(json.dumps({"jsonrpc": "2.0", "id": msg_id, "result": {"content": [{"type": "text", "text": json.dumps(out)}]}}))
-            else:
-                print(json.dumps({"jsonrpc": "2.0", "id": msg_id, "error": {"code": -32601, "message": "Method not found"}}))
-            sys.stdout.flush()
-        except Exception as e:
-            print(json.dumps({"jsonrpc": "2.0", "error": {"code": -32603, "message": str(e)}}))
-            sys.stdout.flush()
+    mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()
